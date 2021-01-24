@@ -3,7 +3,7 @@
 
 #include <iostream>
 
-// Wav Header: permet de stocker les informations relatives au fichier wav à décoder
+// Wav Header: stock all the informations relative to the file we have to decode (encoding parameters)
 typedef struct WAV_HEADER{
     char                RIFF[4];        // RIFF Header      Magic header
     unsigned int       ChunkSize;      // RIFF Chunk Size  

@@ -8,35 +8,41 @@ Encode::Encode() {
 Encode::Encode(Tree* tree) : _tree(tree) {}
 
 void Encode::write_space(ofstream& f, double& ti, int nb_points) {
+    // Write 0 during nb_points*ti seconds (for example, a space between Morse characters = 3 points)
     int N = this->_hz*nb_points*ti;
     for (int n = 0; n < N; n++) {
         Wav::write_word( f, 0, 2 );
     }
 }
 
-void Encode::write_morse(ofstream& f, double& ti, char& c) {
-    int path = this->_tree->char_to_path(c);
+bool Encode::write_morse(ofstream& f, double& ti, char& c) {
+    // From alphabet to 0-1 path (cf. Encode.md doc)
+    unsigned int path = this->_tree->char_to_path(c);
 
-    for(int i = 0; i<(int)log2(path); i++) {
-        bool point = (path & (1<<i)) == 0;
-        
-        int N = this->_hz*ti;
-        N *= point ? 1 : 3;  // total number of samples, on multiplie par le nb de points nécessaire
-        for (int n = 0; n < N; n++)
-        {
-            double amplitude = (double)n / N * this->_max_amplitude;
-            double value     = sin( (this->_two_pi * n * this->_frequency) / this->_hz );
-            Wav::write_word( f, (int)(amplitude * value), 2 );
+    if(path != 0) {
+        // Read each Morse character (0 = ti / 1 = taa)
+        for(int i = 0; i<(int)log2(path); i++) {
+            bool point = (path & (1<<i)) == 0;
+            
+            int N = this->_hz*ti;
+            N *= point ? 1 : 3;  // if 0, then it's a ti (left in the binary tree) - if 1, then it's a taa (3 ti) (right in the binary tree)
+            for (int n = 0; n < N; n++)
+            {
+                double amplitude = (double)n / N * this->_max_amplitude;
+                double value     = sin( (this->_two_pi * n * this->_frequency) / this->_hz );
+                Wav::write_word( f, (int)(amplitude * value), 2 );
+            }
+
+            write_space(f, ti, 1); // 1 space between each Morse character
         }
-
-        write_space(f, ti, 1);
+        return 1;
     }
+    // If path == 0, then the character isn't in the tree and we ignore it
+    return 0;
 }
 
 void Encode::encode(string& message, double& ti) {
     cout << "Encoding..." << endl;
-
-    // ENCODING
     ofstream f("output.wav", ios::binary);
 
     // 1. Write the file headers
@@ -54,7 +60,7 @@ void Encode::encode(string& message, double& ti) {
     f << "data----";  // (chunk size to be filled in later)
     
     // 2. Write the audio samples
-    // Reading each letter of the message and encoding using the tree
+    // Read each character of the message and encode using the tree
     const int message_length = message.length();
 
     for(int i = 0; i < message_length; i++) {
@@ -62,8 +68,7 @@ void Encode::encode(string& message, double& ti) {
         if(c == ' ') {
             write_space(f, ti, 6); // 6 + 1 = 7
         } else {
-            write_morse(f, ti, c);
-            if(message[i+1] != ' ') {
+            if(write_morse(f, ti, c) && message[i+1] != ' ') {
                 write_space(f, ti, 2); // 2 + 1 = pause de 3 points entre chaque lettre
             }
         }
@@ -91,9 +96,11 @@ void Encode::encode_from_file(string& path, double& ti) {
     cout << "Opening text file " << path << "..." << endl;
     if (file.is_open())
     {
+        // File opened
         string message;
         getline(file, message);
         cout << "Success! Line to encode: " << message << endl;
+        // Encode the message from the file (first line)
         encode(message, ti);
     } else {
         throw invalid_argument("Unable to open text file: " + path);
